@@ -1,0 +1,24 @@
+[Unit]
+Description=Persistent recorder for live readsb aircraft state
+Wants=readsb.service
+After=readsb.service
+
+[Service]
+Type=simple
+User=readsb
+WorkingDirectory=/opt/readsb-live-history
+StateDirectory=readsb-live-history
+StateDirectoryMode=0750
+UMask=0027
+ExecStart=/usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js collect --aircraft-json /run/readsb/aircraft.json --stats-json /run/readsb/stats.json --database /var/lib/readsb-live-history/readsb-live-history.sqlite3 --poll-seconds 10 --max-seen-seconds 30 --encounter-close-seconds 60 --periodic-snapshot-seconds 60 --stats-snapshot-seconds 60
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=20s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/readsb-live-history
+
+[Install]
+WantedBy=multi-user.target
