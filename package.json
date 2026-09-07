@@ -1,0 +1,18 @@
+{
+  "name": "readsb-live-history",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Persistent readsb aircraft encounter and positionless-history logger",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "bin": {
+    "readsb-live-history": "bin/readsb-live-history.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/readsb-live-history.js && node --check lib/readsb-history.js && node --check test/readsb-history.test.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
