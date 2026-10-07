@@ -18,7 +18,7 @@ A **positionless** observation means readsb did not provide a fresh usable latit
 ## Requirements
 
 - Linux host running readsb or another service producing compatible `aircraft.json` and `stats.json` files.
-- Node.js 22.5.0 or newer; the collector uses the built-in `node:sqlite` module.
+- Node.js 22.5.0 or newer with the executable available as `/usr/bin/node`; the collector uses the built-in `node:sqlite` module.
 - systemd if you want to use the supplied service unit.
 
 There are no third-party runtime dependencies.
@@ -26,6 +26,16 @@ There are no third-party runtime dependencies.
 ## Quick install
 
 The repository is public. A normal HTTPS clone works without a GitHub account, token, SSH key, or deploy key.
+
+First verify the Node.js prerequisite used by the supplied systemd unit:
+
+```bash
+/usr/bin/node --version
+```
+
+The version must be `v22.5.0` or newer. If `/usr/bin/node` does not exist, install Node.js 22 first; see [the deployment guide](deploy/README.md#install-nodejs-22).
+
+Then install the collector:
 
 ```bash
 sudo git clone --depth 1 https://github.com/r4streando/readsb-live-history.git /opt/readsb-live-history
@@ -43,10 +53,10 @@ Verify it:
 ```bash
 systemctl status readsb-live-history.service
 journalctl -u readsb-live-history.service -n 100 --no-pager
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js active
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js active
 ```
 
-For fresh installs, upgrades, converting an older private-repository checkout, custom paths/users, backup, and uninstall instructions, see [`deploy/README.md`](deploy/README.md).
+For fresh installs, upgrades, converting an older private-repository checkout, Node.js installation, custom paths/users, backup, and uninstall instructions, see [`deploy/README.md`](deploy/README.md).
 
 ## Default paths and intervals
 
@@ -92,10 +102,10 @@ The legacy `readsb` prefix is also accepted, so `readsb-live-history readsb coll
 Because the standalone deployment calls the script directly with Node, you can inspect a deployed database without globally installing anything:
 
 ```bash
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js active
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js encounters --hex A1B2C3
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js samples --hex A1B2C3
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js stats
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js active
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js encounters --hex A1B2C3
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js samples --hex A1B2C3
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js stats
 ```
 
 ## systemd
@@ -104,12 +114,13 @@ The supplied unit:
 
 - runs as `readsb`;
 - starts after and wants `readsb.service`;
+- executes Node as `/usr/bin/node`;
 - reads `/run/readsb/aircraft.json` and `/run/readsb/stats.json`;
 - stores state under `/var/lib/readsb-live-history` via `StateDirectory=readsb-live-history`;
 - restarts on failure;
 - uses systemd hardening including `NoNewPrivileges`, `ProtectSystem=strict`, and `ProtectHome=true`.
 
-If your readsb installation uses a different service user or JSON paths, adjust the unit or use a systemd override before enabling it.
+If your readsb installation uses a different service user, JSON paths, or Node executable path, adjust the unit or use a systemd override before enabling it.
 
 ## SQLite model
 
