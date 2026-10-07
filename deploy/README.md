@@ -7,18 +7,19 @@
 - A Linux host running readsb, with readable `aircraft.json` and `stats.json` files.
 - Git.
 - Node.js 22.5.0 or newer.
-- The Node executable at `/usr/bin/node`, which is the path used by the supplied systemd unit.
+- Node installed system-wide in `/usr/local/bin` or `/usr/bin`.
 - systemd for the supplied service unit.
 
 The collector uses Node's built-in `node:sqlite` module. There are no third-party runtime dependencies, so a production deployment does not need `npm install`.
 
-Check the exact executable used by systemd:
+Check the system-wide Node executable and version:
 
 ```bash
-/usr/bin/node --version
+command -v node
+node --version
 ```
 
-The reported version must be `v22.5.0` or newer. A `node` command provided only by nvm or another per-user shell setup is not sufficient for the supplied service unit.
+The reported version must be `v22.5.0` or newer. The supplied unit uses a controlled PATH containing `/usr/local/bin` and `/usr/bin`. A `node` command provided only by nvm or another per-user shell setup is not sufficient.
 
 ## Install Node.js 22
 
@@ -40,7 +41,7 @@ curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
 sudo -E bash /tmp/nodesource_setup.sh
 sudo apt-get install -y nodejs
 
-/usr/bin/node --version
+node --version
 ```
 
 Do not continue unless `/usr/bin/node` exists and reports `v22.5.0` or newer.
@@ -49,13 +50,7 @@ Do not continue unless `/usr/bin/node` exists and reports `v22.5.0` or newer.
 
 Current NodeSource DEB packages do not support `armhf`. Official Node.js 22 releases do publish Linux ARMv7 binaries, so use an official Node.js ARMv7 build or migrate the host to a 64-bit OS.
 
-After installing Node manually, make sure the executable used by systemd is actually available at:
-
-```text
-/usr/bin/node
-```
-
-If you intentionally install Node elsewhere, change `ExecStart=` in the service unit to that absolute path.
+After installing Node manually, make sure `command -v node` reports `/usr/local/bin/node` or `/usr/bin/node`. If you intentionally install Node elsewhere, adjust the service `Environment=PATH=...` or `ExecStart=`.
 
 ## Fresh install
 
@@ -68,8 +63,8 @@ The standard layout is:
 Verify Node before installing the service:
 
 ```bash
-test -x /usr/bin/node
-/usr/bin/node --version
+command -v node
+node --version
 ```
 
 Then install from the public repository:
@@ -107,9 +102,9 @@ If your readsb installation uses another user or JSON path, edit the installed s
 systemctl status readsb-live-history.service
 journalctl -u readsb-live-history.service -n 100 --no-pager
 
-sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js active
-sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js encounters
-sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js stats
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js active
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js encounters
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js stats
 ```
 
 The database should appear at:
@@ -130,20 +125,23 @@ Failed at step EXEC spawning /usr/bin/node
 status=203/EXEC
 ```
 
-the collector has not started yet. systemd cannot find the Node executable named by `ExecStart=`.
+the collector has not started yet. the installed service is still using the older hard-coded `/usr/bin/node` path, or Node is not installed system-wide.
 
 Check:
 
 ```bash
 command -v node || true
-ls -l /usr/bin/node 2>/dev/null || true
+ls -l /usr/local/bin/node /usr/bin/node 2>/dev/null || true
 dpkg --print-architecture
 cat /etc/os-release
 ```
 
-If `/usr/bin/node` is missing, install Node.js 22 as described above. Then clear the failure and restart:
+If `node` is missing, install Node.js 22 as described above. If Node already exists under `/usr/local/bin`, update the checkout and reinstall the current service unit. Then clear the failure and restart:
 
 ```bash
+sudo git -C /opt/readsb-live-history pull --ff-only
+sudo install -m 0644 /opt/readsb-live-history/deploy/readsb-live-history.service /etc/systemd/system/readsb-live-history.service
+sudo systemctl daemon-reload
 sudo systemctl reset-failed readsb-live-history.service
 sudo systemctl restart readsb-live-history.service
 systemctl status readsb-live-history.service --no-pager
