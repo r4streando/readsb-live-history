@@ -1,8 +1,8 @@
 # readsb-live-history
 
-Persistent history recorder for live [readsb](https://github.com/wiedehopf/readsb) aircraft state and receiver statistics.
+Persistent SQLite history for live [readsb](https://github.com/wiedehopf/readsb) aircraft state and receiver statistics.
 
-The collector reads `aircraft.json` and `stats.json` on a short interval and stores durable SQLite history that remains useful even for aircraft that never produce a position trace.
+`readsb-live-history` polls readsb's live JSON output and records durable encounter history, including aircraft that never produce a usable position trace. It is intended to complement readsb/tar1090 history rather than replace it.
 
 ## What it records
 
@@ -18,11 +18,37 @@ A **positionless** observation means readsb did not provide a fresh usable latit
 ## Requirements
 
 - Linux host running readsb or another service producing compatible `aircraft.json` and `stats.json` files.
-- Node.js 22.5 or newer (`node:sqlite` is used directly).
+- Node.js 22.5.0 or newer; the collector uses the built-in `node:sqlite` module.
+- systemd if you want to use the supplied service unit.
 
 There are no third-party runtime dependencies.
 
-## Default paths
+## Quick install
+
+The repository is public. A normal HTTPS clone works without a GitHub account, token, SSH key, or deploy key.
+
+```bash
+sudo git clone --depth 1 https://github.com/r4streando/readsb-live-history.git /opt/readsb-live-history
+
+sudo install -m 0644 \
+  /opt/readsb-live-history/deploy/readsb-live-history.service \
+  /etc/systemd/system/readsb-live-history.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now readsb-live-history.service
+```
+
+Verify it:
+
+```bash
+systemctl status readsb-live-history.service
+journalctl -u readsb-live-history.service -n 100 --no-pager
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js active
+```
+
+For fresh installs, upgrades, converting an older private-repository checkout, custom paths/users, backup, and uninstall instructions, see [`deploy/README.md`](deploy/README.md).
+
+## Default paths and intervals
 
 | Item | Default |
 | --- | --- |
@@ -35,7 +61,7 @@ There are no third-party runtime dependencies.
 | periodic aircraft sample | 60 seconds |
 | receiver stats sample | 60 seconds |
 
-All of these can be overridden from the command line.
+All can be overridden from the command line.
 
 ## CLI
 
@@ -61,36 +87,29 @@ Options:
 --hex HEX
 ```
 
-The legacy `readsb` prefix is also accepted, so `readsb-live-history readsb collect ...` works during migration from the original report-repository implementation.
+The legacy `readsb` prefix is also accepted, so `readsb-live-history readsb collect ...` remains valid during migration from the original report-repository implementation.
 
-## Install on a readsb host
-
-A typical standalone installation uses `/opt/readsb-live-history` for the code and `/var/lib/readsb-live-history` for persistent state.
+Because the standalone deployment calls the script directly with Node, you can inspect a deployed database without globally installing anything:
 
 ```bash
-sudo git clone https://github.com/r4streando/readsb-live-history.git /opt/readsb-live-history
-cd /opt/readsb-live-history
-sudo npm install --omit=dev
-sudo cp deploy/readsb-live-history.service /etc/systemd/system/readsb-live-history.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now readsb-live-history.service
-```
-
-For a private repository, clone using an authenticated GitHub method instead of the unauthenticated URL above.
-
-Check operation with:
-
-```bash
-systemctl status readsb-live-history.service
-journalctl -u readsb-live-history.service -f
 sudo node /opt/readsb-live-history/bin/readsb-live-history.js active
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js encounters --hex A1B2C3
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js samples --hex A1B2C3
+sudo node /opt/readsb-live-history/bin/readsb-live-history.js stats
 ```
 
 ## systemd
 
-The supplied unit uses systemd's `StateDirectory=readsb-live-history`, which creates and manages `/var/lib/readsb-live-history`. It runs as the `readsb` user by default and expects that user to be able to read `/run/readsb/aircraft.json` and `/run/readsb/stats.json`.
+The supplied unit:
 
-If your readsb installation uses a different user or different JSON paths, copy the unit and adjust `User=` and/or the command-line arguments before enabling it.
+- runs as `readsb`;
+- starts after and wants `readsb.service`;
+- reads `/run/readsb/aircraft.json` and `/run/readsb/stats.json`;
+- stores state under `/var/lib/readsb-live-history` via `StateDirectory=readsb-live-history`;
+- restarts on failure;
+- uses systemd hardening including `NoNewPrivileges`, `ProtectSystem=strict`, and `ProtectHome=true`.
+
+If your readsb installation uses a different service user or JSON paths, adjust the unit or use a systemd override before enabling it.
 
 ## SQLite model
 
@@ -103,7 +122,7 @@ The database currently uses schema version 2 and contains:
 
 File databases use WAL mode, `synchronous=NORMAL`, a 5-second busy timeout, and a WAL autocheckpoint of 1000 pages.
 
-No automatic retention/deletion is currently performed.
+No automatic retention or deletion is currently performed.
 
 ## Encounter behavior
 
@@ -112,7 +131,7 @@ No automatic retention/deletion is currently performed.
 - A contact with a fresh valid position is stored as `positioned`.
 - Successful polls update lifecycle counters even when no sparse sample is inserted.
 - Missing contacts close after the configured absence timeout.
-- A malformed/unavailable input file does **not** close encounters.
+- A malformed or unavailable input file does **not** close encounters.
 - Open encounters left by a prior collector process are closed as `collector_restart` at startup.
 - A clean shutdown closes open encounters as `collector_shutdown`.
 
