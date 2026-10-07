@@ -6,18 +6,56 @@
 
 - A Linux host running readsb, with readable `aircraft.json` and `stats.json` files.
 - Git.
-- Node.js 22.5.0 or newer. The collector uses the built-in `node:sqlite` module.
+- Node.js 22.5.0 or newer.
+- The Node executable at `/usr/bin/node`, which is the path used by the supplied systemd unit.
 - systemd for the supplied service unit.
 
-There are no third-party runtime dependencies, so a production deployment does not need `npm install`.
+The collector uses Node's built-in `node:sqlite` module. There are no third-party runtime dependencies, so a production deployment does not need `npm install`.
 
-Check Node before installing:
+Check the exact executable used by systemd:
 
 ```bash
-node --version
+/usr/bin/node --version
 ```
 
-The reported version must be `v22.5.0` or newer.
+The reported version must be `v22.5.0` or newer. A `node` command provided only by nvm or another per-user shell setup is not sufficient for the supplied service unit.
+
+## Install Node.js 22
+
+First determine the Debian package architecture:
+
+```bash
+dpkg --print-architecture
+```
+
+### amd64 or arm64
+
+NodeSource publishes Node.js 22 packages for both architectures. Install them with:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+
+curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+sudo -E bash /tmp/nodesource_setup.sh
+sudo apt-get install -y nodejs
+
+/usr/bin/node --version
+```
+
+Do not continue unless `/usr/bin/node` exists and reports `v22.5.0` or newer.
+
+### armhf / 32-bit ARM
+
+Current NodeSource DEB packages do not support `armhf`. Official Node.js 22 releases do publish Linux ARMv7 binaries, so use an official Node.js ARMv7 build or migrate the host to a 64-bit OS.
+
+After installing Node manually, make sure the executable used by systemd is actually available at:
+
+```text
+/usr/bin/node
+```
+
+If you intentionally install Node elsewhere, change `ExecStart=` in the service unit to that absolute path.
 
 ## Fresh install
 
@@ -27,7 +65,14 @@ The standard layout is:
 - database/state: `/var/lib/readsb-live-history`
 - service: `/etc/systemd/system/readsb-live-history.service`
 
-Install from the public repository:
+Verify Node before installing the service:
+
+```bash
+test -x /usr/bin/node
+/usr/bin/node --version
+```
+
+Then install from the public repository:
 
 ```bash
 sudo git clone --depth 1 https://github.com/r4streando/readsb-live-history.git /opt/readsb-live-history
@@ -62,9 +107,9 @@ If your readsb installation uses another user or JSON path, edit the installed s
 systemctl status readsb-live-history.service
 journalctl -u readsb-live-history.service -n 100 --no-pager
 
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js active
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js encounters
-sudo node /opt/readsb-live-history/bin/readsb-live-history.js stats
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js active
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js encounters
+sudo /usr/bin/node /opt/readsb-live-history/bin/readsb-live-history.js stats
 ```
 
 The database should appear at:
@@ -74,6 +119,36 @@ The database should appear at:
 ```
 
 systemd creates `/var/lib/readsb-live-history` through `StateDirectory=readsb-live-history` and makes it writable by the service.
+
+## Troubleshooting: status=203/EXEC
+
+If the journal contains:
+
+```text
+Failed to locate executable /usr/bin/node: No such file or directory
+Failed at step EXEC spawning /usr/bin/node
+status=203/EXEC
+```
+
+the collector has not started yet. systemd cannot find the Node executable named by `ExecStart=`.
+
+Check:
+
+```bash
+command -v node || true
+ls -l /usr/bin/node 2>/dev/null || true
+dpkg --print-architecture
+cat /etc/os-release
+```
+
+If `/usr/bin/node` is missing, install Node.js 22 as described above. Then clear the failure and restart:
+
+```bash
+sudo systemctl reset-failed readsb-live-history.service
+sudo systemctl restart readsb-live-history.service
+systemctl status readsb-live-history.service --no-pager
+journalctl -u readsb-live-history.service -n 50 --no-pager
+```
 
 ## Convert an existing private-repository checkout
 
